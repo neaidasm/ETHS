@@ -639,8 +639,9 @@ function mapRecord(r) {
 ═══════════════════════════════════════════════════════════ */
 let ALL_DATA   = [];
 let isFetching     = false;
-let MO_TOTAL       = 0;   // sum of MOs trained from mo_trained.json
-let MEETINGS_TOTAL = 0;   // count of block meetings from block_meetings.json
+let MO_TOTAL         = 0;   // sum of MOs trained from mo_trained.json
+let MEETINGS_TOTAL   = 0;   // count of block meetings from block_meetings.json
+let MEETINGS_BY_COORD = [0,0,0,0,0]; // per-coordinator meeting counts [Rohit,Mayuri,Dilip,Aditi,Madhushri]
 let dataSource = 'seed'; // 'seed' | 'live'
 
 const GH_OWNER    = 'neaidasm';
@@ -683,15 +684,38 @@ async function fetchData() {
     if (moResp.ok) {
       const moJson = await moResp.json();
       MO_TOTAL = (moJson.results || []).reduce((sum, r) => {
-        const v = parseFloat(r['No. of MOs Trained'] || r['no_of_mos_trained'] || 0);
+        // Try multiple possible field name formats from KoboToolbox API
+        const keys = Object.keys(r);
+        const key  = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g,'').includes('mostrained')
+                                 || k.toLowerCase().replace(/[^a-z0-9]/g,'').includes('motrained')
+                                 || k.toLowerCase().replace(/[^a-z0-9]/g,'').includes('noofmos')
+                                 || k === 'No. of MOs Trained');
+        const v = key ? parseFloat(r[key] || 0) : 0;
         return sum + (isNaN(v) ? 0 : v);
       }, 0);
     }
 
-    // Block Meetings — count of submissions
+    // Block Meetings — count of submissions + coordinator breakdown
     if (meetResp.ok) {
       const meetJson = await meetResp.json();
-      MEETINGS_TOTAL = (meetJson.results || []).length;
+      const meetRecs  = meetJson.results || [];
+      MEETINGS_TOTAL  = meetRecs.length;
+
+      // Normalise coordinator name (same fuzzy match as main form)
+      const normCoord = name => {
+        const cl = String(name||'').toLowerCase();
+        if (cl.includes('rohit'))     return 'Rohit Kharel';
+        if (cl.includes('mayuri'))    return 'Mayuri Kurmi';
+        if (cl.includes('dilip'))     return 'Dilip Pariga';
+        if (cl.includes('aditi'))     return 'Aditi Saikia';
+        if (cl.includes('madhushri')) return 'Madhushri Dutta';
+        return null;
+      };
+
+      // Count per coordinator
+      MEETINGS_BY_COORD = COORDS.map(c =>
+        meetRecs.filter(r => normCoord(r['block_coordinator']) === c).length
+      );
     }
 
     const now = new Date();
@@ -860,14 +884,18 @@ function renderTVA(data){
       <div class="prog-track">
         <div class="prog-fill" style="width:${w}%;background:${clrs[i]}"><span>${p}%</span></div>
       </div>`;
-    if(i<3){
-      const indKey = ['hwc','vhsnd','phcp'][i];
-      const ctgtArr = [COORD_TARGETS.hwc,COORD_TARGETS.vhsnd,COORD_TARGETS.phc_pmsma][i];
+    // Coordinator breakdown — indicators 1-3 from main data, 4 from MEETINGS_BY_COORD
+    if(i<4){
+      const vals = i<3
+        ? COORDS.map((_,ci)=>coordData[ci][['hwc','vhsnd','phcp'][i]])
+        : MEETINGS_BY_COORD;
+      const ctgtArr = [COORD_TARGETS.hwc,COORD_TARGETS.vhsnd,COORD_TARGETS.phc_pmsma,COORD_TARGETS.meetings][i];
       h+='<div class="coord-strip">';
-      coordData.forEach((cd,ci)=>{
+      COORDS.forEach((c,ci)=>{
+        const firstName = c.split(' ')[0];
         h+=`<div class="coord-cell">
-          <div class="coord-name">${cd.name}</div>
-          <div class="coord-val" style="color:${COORD_COLORS[ci]}">${cd[indKey]}</div>
+          <div class="coord-name">${firstName}</div>
+          <div class="coord-val" style="color:${COORD_COLORS[ci]}">${vals[ci]}</div>
           <div class="coord-tgt">of ${ctgtArr[ci]}</div>
         </div>`;
       });
