@@ -1,0 +1,61 @@
+name: Fetch KoboToolbox Data
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch all 3 KoboToolbox forms
+        run: |
+          mkdir -p data
+
+          echo "Fetching main supervision form..."
+          curl -s \
+            -H "Authorization: Token 376644ab507d99d198c5aadb70cc1052d58c3ff8" \
+            "https://kf.kobotoolbox.org/api/v2/assets/aaHKcisJXEqPH2xkEa3XkS/data/?format=json&limit=3000" \
+            -o data/kobo_latest.json
+
+          echo "Fetching MO Trained form..."
+          curl -s \
+            -H "Authorization: Token 376644ab507d99d198c5aadb70cc1052d58c3ff8" \
+            "https://kf.kobotoolbox.org/api/v2/assets/ajV3sP26R6kKTgBWgyAcJx/data/?format=json&limit=3000" \
+            -o data/mo_trained.json
+
+          echo "Fetching Block Meetings form..."
+          curl -s \
+            -H "Authorization: Token 376644ab507d99d198c5aadb70cc1052d58c3ff8" \
+            "https://kf.kobotoolbox.org/api/v2/assets/a9n6ZVz3PkLYiZuWDcUpyz/data/?format=json&limit=3000" \
+            -o data/block_meetings.json
+
+          python3 -c "
+          import json
+          for fname, label in [
+              ('data/kobo_latest.json',    'Supervision'),
+              ('data/mo_trained.json',     'MO Trained'),
+              ('data/block_meetings.json', 'Block Meetings'),
+          ]:
+              with open(fname) as f:
+                  d = json.load(f)
+              count = len(d.get('results', []))
+              print(f'{label}: {count} records')
+          "
+
+      - name: Commit and push updated data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/kobo_latest.json data/mo_trained.json data/block_meetings.json
+          git diff --cached --quiet && echo "No new data" || \
+            git commit -m "data: update all 3 kobo forms [$(date -u '+%Y-%m-%d %H:%M UTC')]"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
