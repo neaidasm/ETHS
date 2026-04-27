@@ -334,6 +334,203 @@ tr:hover td{background:#F0F8FF}
 </style>
 </head>
 <body>
+<!-- ═══════════════════════════════════════════════════════
+     LOGIN SCREEN
+═══════════════════════════════════════════════════════ -->
+<div id="loginScreen" style="display:none">
+  <style>
+    #loginScreen {
+      position:fixed;inset:0;
+      background:linear-gradient(135deg,#0058AB 0%,#1CABE2 60%,#69DBFF 100%);
+      display:flex;align-items:center;justify-content:center;
+      z-index:9999;font-family:'Segoe UI',Arial,sans-serif;
+    }
+    .login-card {
+      background:#fff;border-radius:16px;
+      padding:40px 36px;width:100%;max-width:380px;
+      box-shadow:0 20px 60px rgba(0,88,171,.3);
+      text-align:center;
+    }
+    .login-logo {
+      width:56px;height:56px;background:#0058AB;
+      border-radius:50%;margin:0 auto 16px;
+      display:flex;align-items:center;justify-content:center;
+      font-size:24px;color:#fff;font-weight:900;
+    }
+    .login-title {
+      font-size:20px;font-weight:700;color:#0058AB;margin-bottom:4px;
+    }
+    .login-sub {
+      font-size:12px;color:#6c757d;margin-bottom:28px;line-height:1.5;
+    }
+    .login-field {
+      text-align:left;margin-bottom:16px;
+    }
+    .login-field label {
+      display:block;font-size:11.5px;font-weight:600;
+      color:#374EA2;margin-bottom:5px;
+    }
+    .login-field input {
+      width:100%;padding:11px 14px;border:1.5px solid #C9E8F5;
+      border-radius:8px;font-size:13.5px;color:#2D3748;
+      outline:none;transition:border-color .2s;box-sizing:border-box;
+    }
+    .login-field input:focus {
+      border-color:#1CABE2;box-shadow:0 0 0 3px rgba(28,171,226,.15);
+    }
+    .login-btn {
+      width:100%;padding:12px;background:#0058AB;color:#fff;
+      border:none;border-radius:8px;font-size:14px;font-weight:700;
+      cursor:pointer;margin-top:8px;transition:background .2s;
+      letter-spacing:.3px;
+    }
+    .login-btn:hover { background:#1CABE2; }
+    .login-btn:disabled { background:#a0c4e0;cursor:not-allowed; }
+    .login-error {
+      background:#FCE8E8;color:#8B1A1A;border:1px solid #f5c6c6;
+      border-radius:6px;padding:10px 14px;font-size:12px;
+      margin-top:14px;display:none;text-align:left;
+    }
+    .login-footer {
+      font-size:10.5px;color:#a0aec0;margin-top:24px;line-height:1.6;
+    }
+    @media(max-width:420px){
+      .login-card{padding:28px 20px;margin:16px;}
+    }
+  </style>
+
+  <div class="login-card">
+    <div class="login-logo">E</div>
+    <div class="login-title">EVTHS Supervision</div>
+    <div class="login-sub">
+      Nagaon District · HIV &amp; Syphilis Prevention in Pregnancy<br>
+      <strong style="color:#0058AB">Authorised Access Only</strong>
+    </div>
+
+    <div class="login-field">
+      <label>Username</label>
+      <input type="text" id="loginUser" placeholder="Enter your username"
+             autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="Enter your password"
+             autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="loginError"></div>
+
+    <div class="login-footer">
+      This dashboard contains confidential health programme data.<br>
+      Unauthorised access is strictly prohibited.
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   AUTH — session lasts 8 hours
+═══════════════════════════════════════════════════════ */
+const SESSION_KEY     = 'evths_session';
+const SESSION_HOURS   = 8;
+const USERS_JSON_URL  = './data/users.json';
+
+// Field name variants the KoboToolbox API might use
+function getField(record, variants) {
+  const keys = Object.keys(record);
+  for (const v of variants) {
+    // exact
+    if (record[v] !== undefined) return String(record[v] || '').trim();
+    // case-insensitive stripped match
+    const vs = v.toLowerCase().replace(/[^a-z0-9]/g,'');
+    const hit = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g,'') === vs);
+    if (hit) return String(record[hit] || '').trim();
+  }
+  return '';
+}
+
+function checkSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    if (s && s.expiry && Date.now() < s.expiry) return true;
+  } catch(e) {}
+  return false;
+}
+
+function saveSession(displayName) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({
+    displayName,
+    expiry: Date.now() + SESSION_HOURS * 60 * 60 * 1000
+  }));
+}
+
+function showDashboard() {
+  document.getElementById('loginScreen').style.display = 'none';
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.style.display = 'block';
+  document.getElementById('loginBtn').disabled = false;
+  document.getElementById('loginBtn').textContent = 'Sign In';
+}
+
+async function doLogin() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value.trim();
+
+  if (!username || !password) {
+    showLoginError('Please enter both username and password.');
+    return;
+  }
+
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+  document.getElementById('loginError').style.display = 'none';
+
+  try {
+    const resp = await fetch(USERS_JSON_URL + '?ts=' + Date.now());
+    if (!resp.ok) throw new Error('Could not load user list. Please try again.');
+
+    const json    = await resp.json();
+    const users   = json.results || [];
+
+    const matched = users.find(u => {
+      const uname = getField(u, ['User Name','user_name','username','UserName']);
+      const upass = getField(u, ['Password','password','pass']);
+      return uname.toLowerCase() === username.toLowerCase() && upass === password;
+    });
+
+    if (matched) {
+      const displayName = getField(matched, ['User Display Name','user_display_name','name','full_name']) || username;
+      saveSession(displayName);
+      showDashboard();
+    } else {
+      showLoginError('Invalid username or password. Please try again.');
+    }
+  } catch(err) {
+    showLoginError(err.message || 'Login failed. Please try again.');
+    console.error('[Login]', err);
+  }
+}
+
+// ── On page load: show login or dashboard ──
+(function() {
+  const loginScreen = document.getElementById('loginScreen');
+  loginScreen.style.display = 'flex';
+
+  if (checkSession()) {
+    // Valid session — go straight to dashboard
+    showDashboard();
+  }
+  // Otherwise login screen stays visible until doLogin() succeeds
+})();
+</script>
+
+
 
 <!-- Loading overlay -->
 <div id="loadingOverlay" class="loading-overlay">
